@@ -1,0 +1,114 @@
+// Snapland GIS database schema.
+//
+// Geometry columns are PostGIS types that Prisma models as `Unsupported`; every
+// read/write that touches them goes through raw SQL in AreaRepository. Spatial
+// indexes and CHECK constraints live in the SQL migrations because Prisma
+// cannot express them.
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "esm"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// Stored lower-cased; uniqueness is case-insensitive by construction.
+  email        String   @unique @db.VarChar(254)
+  displayName  String   @map("display_name") @db.VarChar(60)
+  passwordHash String   @map("password_hash") @db.VarChar(255)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  ownedAreas   Area[]        @relation("AreaOwner")
+  updatedAreas Area[]        @relation("AreaUpdatedBy")
+  deletedAreas Area[]        @relation("AreaDeletedBy")
+  versions     AreaVersion[]
+  auditLogs    AuditLog[]
+
+  @@map("users")
+}
+
+model Area {
+  id          String                                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ownerId     String                                  @map("owner_id") @db.Uuid
+  name        String                                  @db.VarChar(120)
+  description String                                  @default("") @db.VarChar(2000)
+  /// WGS84 polygon. Validity and SRID are enforced by CHECK constraints.
+  geom        Unsupported("geometry(Polygon, 4326)")
+  /// Geodesic area on the WGS84 ellipsoid (ST_Area(geography)), km².
+  areaSqKm    Float                                   @map("area_sq_km")
+  vertexCount Int                                     @map("vertex_count")
+  /// Optimistic-concurrency counter; bumped on every change.
+  version     Int                                     @default(1)
+  createdAt   DateTime                                @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime                                @default(now()) @map("updated_at") @db.Timestamptz(3)
+  updatedById String                                  @map("updated_by_id") @db.Uuid
+  /// Soft delete marker; rows are purged by RetentionService after the retention window.
+  deletedAt   DateTime?                               @map("deleted_at") @db.Timestamptz(3)
+  deletedById String?                                 @map("deleted_by_id") @db.Uuid
+
+  owner     User          @relation("AreaOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  updatedBy User          @relation("AreaUpdatedBy", fields: [updatedById], references: [id], onDelete: Restrict)
+  deletedBy User?         @relation("AreaDeletedBy", fields: [deletedById], references: [id], onDelete: SetNull)
+  versions  AreaVersion[]
+
+  @@index([ownerId])
+  @@index([deletedAt])
+  @@map("areas")
+}
+
+enum AreaAction {
+  CREATE
+  UPDATE
+  DELETE
+  RESTORE
+
+  @@map("area_action")
+}
+
+/// Immutable snapshot of an area after every change (edit history).
+model AreaVersion {
+  id          String                                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  areaId      String                                  @map("area_id") @db.Uuid
+  version     Int
+  action      AreaAction
+  name        String                                  @db.VarChar(120)
+  description String                                  @db.VarChar(2000)
+  geom        Unsupported("geometry(Polygon, 4326)")
+  areaSqKm    Float                                   @map("area_sq_km")
+  editedById  String                                  @map("edited_by_id") @db.Uuid
+  createdAt   DateTime                                @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  area     Area @relation(fields: [areaId], references: [id], onDelete: Cascade)
+  editedBy User @relation(fields: [editedById], references: [id], onDelete: Restrict)
+
+  @@unique([areaId, version])
+  @@index([editedById])
+  @@map("area_versions")
+}
+
+/// Append-only audit trail of user actions (auth + drawing), used for analytics too.
+model AuditLog {
+  id         BigInt   @id @default(autoincrement())
+  userId     String?  @map("user_id") @db.Uuid
+  action     String   @db.VarChar(64)
+  entityType String   @map("entity_type") @db.VarChar(32)
+  entityId   String?  @map("entity_id") @db.VarChar(64)
+  metadata   Json     @default("{}")
+  ip         String?  @db.VarChar(64)
+  userAgent  String?  @map("user_agent") @db.VarChar(512)
+  requestId  String?  @map("request_id") @db.VarChar(64)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
