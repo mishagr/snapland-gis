@@ -10,6 +10,7 @@
   },
   "scripts": {
     "dev": "tsx server.ts",
+    "dev:pretty": "tsx server.ts | pino-pretty --singleLine",
     "build": "prisma generate && next build",
     "start": "NODE_ENV=production tsx server.ts",
     "lint": "eslint .",
@@ -17,6 +18,7 @@
     "test": "vitest run --project unit",
     "test:integration": "vitest run --project integration",
     "test:e2e": "playwright test",
+    "test:all": "npm run lint && npm run typecheck && npm test && npm run test:integration && npm run test:e2e",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate deploy",
     "db:migrate:dev": "prisma migrate dev",
