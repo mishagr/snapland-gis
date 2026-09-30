@@ -49,12 +49,12 @@ export function MapWorkspace({ user, config }: Props) {
 
   useEffect(() => {
     void controller.start(containerRef.current!);
-    if (process.env.NODE_ENV !== 'production') {
-      // Debug/e2e hook (not shipped in production builds).
+    if (config.debugHandle) {
+      // Debug/e2e handle: on in development, opt-in in production (EXPOSE_DEBUG_HANDLE=true).
       (window as unknown as { __snapland?: unknown }).__snapland = { store, controller };
     }
     return () => controller.dispose();
-  }, [controller, store]);
+  }, [controller, store, config.debugHandle]);
 
   return (
     <div className="workspace" data-engine={state.engine} data-connection={state.connection}>

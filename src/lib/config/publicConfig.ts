@@ -17,6 +17,8 @@ export interface PublicConfig {
     token: string;
     scriptUrl: string;
   };
+  /** Expose `window.__snapland` (store + controller) for debugging and end-to-end tests. */
+  debugHandle: boolean;
   /** govmap orthophoto tiles for the Leaflet engine (EPSG:2039 grid). Absent = layer hidden. */
   govmapOrtho: {
     urlTemplate: string;

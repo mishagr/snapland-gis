@@ -12,6 +12,7 @@ const config: PublicConfig = {
   defaultEngine: 'govmap',
   defaultCenter: [34.7818, 32.0853],
   defaultResolution: 13,
+  debugHandle: false,
   govmap: { mode: 'live', token: 'test-token', scriptUrl: 'unused' },
   govmapOrtho: null,
 };

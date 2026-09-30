@@ -26,6 +26,7 @@ export function getPublicConfig(): PublicConfig {
     defaultEngine,
     defaultCenter: center,
     defaultResolution: Number(env.MAP_DEFAULT_RESOLUTION) > 0 ? Number(env.MAP_DEFAULT_RESOLUTION) : 20,
+    debugHandle: env.NODE_ENV !== 'production' || env.EXPOSE_DEBUG_HANDLE === 'true',
     govmap: {
       mode,
       token,
