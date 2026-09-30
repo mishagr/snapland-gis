@@ -28,6 +28,8 @@ export interface WorkspaceDeps {
 
 const validator = new PolygonValidator();
 
+export type WriteResult = 'saved' | 'conflict' | 'failed';
+
 /**
  * Orchestrates the workspace: owns the active map engine and wires it to the
  * store, the REST API and the WebSocket. React components only read the store
@@ -177,7 +179,7 @@ export class WorkspaceController {
     if (!area) return;
     if (area.simplified) area = (await this.loadFullArea(area.id)) ?? area;
     this.deps.realtime.setEditing(area.id);
-    this.store.update({ mode: { kind: 'editing', areaId: area.id, candidate: null } });
+    this.store.update({ mode: { kind: 'editing', areaId: area.id, baseVersion: area.version, candidate: null } });
     this.engine.startEditing(this.toRenderable(area, true, null));
   }
 
@@ -193,7 +195,7 @@ export class WorkspaceController {
       this.store.notify('error', check.issues[0]!.message);
       return;
     }
-    await this.patch(area, { geometry: check.polygon });
+    await this.patch(area, { geometry: check.polygon }, mode.baseVersion);
   }
 
   cancelShapeEdit(): void {
@@ -202,14 +204,18 @@ export class WorkspaceController {
     this.finishEditMode();
   }
 
-  async updateDetails(id: string, details: { name: string; description: string }): Promise<boolean> {
+  /**
+   * @param baseVersion the version the user was looking at when they started editing;
+   *   if someone saved in between, the server answers 409 and the conflict dialog opens.
+   */
+  async updateDetails(id: string, details: { name: string; description: string }, baseVersion: number): Promise<WriteResult> {
     const area = this.store.getState().areas.get(id);
-    if (!area) return false;
+    if (!area) return 'failed';
     const changes: { name?: string; description?: string } = {};
     if (details.name !== area.name) changes.name = details.name;
     if (details.description !== area.description) changes.description = details.description;
-    if (Object.keys(changes).length === 0) return true;
-    return this.patch(area, changes);
+    if (Object.keys(changes).length === 0) return 'saved';
+    return this.patch(area, changes, baseVersion);
   }
 
   async deleteArea(id: string): Promise<void> {
@@ -362,15 +368,19 @@ export class WorkspaceController {
     }
   }
 
-  private async patch(area: AreaDto, changes: { name?: string; description?: string; geometry?: PolygonGeometry }): Promise<boolean> {
+  private async patch(
+    area: AreaDto,
+    changes: { name?: string; description?: string; geometry?: PolygonGeometry },
+    expectedVersion = area.version,
+  ): Promise<WriteResult> {
     this.store.update({ busy: true });
     try {
-      const { area: updated } = await this.deps.api.updateArea(area.id, { expectedVersion: area.version, ...changes });
+      const { area: updated } = await this.deps.api.updateArea(area.id, { expectedVersion, ...changes });
       this.store.upsertArea(updated);
-      return true;
+      return 'saved';
     } catch (err) {
       this.handleWriteError(err, area, changes);
-      return false;
+      return this.store.getState().conflict ? 'conflict' : 'failed';
     } finally {
       this.store.update({ busy: false });
     }

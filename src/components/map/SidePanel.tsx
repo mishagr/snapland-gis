@@ -94,6 +94,8 @@ function AreaList({ state, controller }: { state: MapState; controller: Workspac
 
 function AreaDetails({ area, state, controller, user }: { area: AreaDto; state: MapState; controller: WorkspaceController | null; user: UserDto }) {
   const [editingText, setEditingText] = useState(false);
+  // Version shown when the form was opened; saving against it detects concurrent edits.
+  const [baseVersion, setBaseVersion] = useState(area.version);
   const [showHistory, setShowHistory] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const isOwner = area.ownerId === user.id;
@@ -105,11 +107,13 @@ function AreaDetails({ area, state, controller, user }: { area: AreaDto; state: 
   async function onSave(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = new FormData(e.currentTarget);
-    const ok = await controller?.updateDetails(area.id, {
-      name: String(form.get('name') ?? '').trim(),
-      description: String(form.get('description') ?? '').trim(),
-    });
-    if (ok) setEditingText(false);
+    const result = await controller?.updateDetails(
+      area.id,
+      { name: String(form.get('name') ?? '').trim(), description: String(form.get('description') ?? '').trim() },
+      baseVersion,
+    );
+    // On conflict the dialog takes over (keep theirs / apply mine), so the form closes too.
+    if (result === 'saved' || result === 'conflict') setEditingText(false);
   }
 
   return (
@@ -191,7 +195,14 @@ function AreaDetails({ area, state, controller, user }: { area: AreaDto; state: 
       ) : (
         !editingText && (
           <div className="row wrap">
-            <button className="btn" onClick={() => setEditingText(true)} disabled={state.mode.kind !== 'idle'}>
+            <button
+              className="btn"
+              onClick={() => {
+                setBaseVersion(area.version);
+                setEditingText(true);
+              }}
+              disabled={state.mode.kind !== 'idle'}
+            >
               Edit details
             </button>
             <button className="btn" onClick={() => void controller?.startShapeEdit()} disabled={state.mode.kind !== 'idle'}>

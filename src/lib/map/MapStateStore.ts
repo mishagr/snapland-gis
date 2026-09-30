@@ -10,7 +10,13 @@ export type Mode =
   | { kind: 'drawing' }
   /** Drawing finished; waiting for name/description before saving. */
   | { kind: 'naming'; ring: LngLat[]; areaSqKm: number }
-  | { kind: 'editing'; areaId: string; candidate: (SketchProgress & { ring: LngLat[]; valid: boolean }) | null };
+  | {
+      kind: 'editing';
+      areaId: string;
+      /** Version the edit started from: sent as expectedVersion so concurrent changes surface as conflicts. */
+      baseVersion: number;
+      candidate: (SketchProgress & { ring: LngLat[]; valid: boolean }) | null;
+    };
 
 export interface ConflictState {
   areaId: string;

@@ -20,6 +20,9 @@ import { LayerSwitcher } from './LayerSwitcher';
 import { PolygonDrawTool } from './PolygonDrawTool';
 import { VertexEditTool } from './VertexEditTool';
 
+/** A polyline (open sketch) or polygon (closed sketch); both can be reshaped in place. */
+type SketchShape = L.Path & { setLatLngs(latlngs: L.LatLngExpression[]): unknown };
+
 interface RenderedArea {
   /** Compared by reference: the store replaces geometry objects only when they change. */
   geometry: RenderableArea['geometry'];
@@ -46,6 +49,7 @@ export class LeafletEngine extends Emitter<MapEngineEvents> implements IMapEngin
   private readonly areaLayers = new Map<string, RenderedArea>();
   private readonly areaGroup = L.featureGroup();
   private readonly sketchGroup = L.layerGroup();
+  private readonly sketchLayers = new Map<string, { shape: SketchShape; label: L.Tooltip; closed: boolean }>();
   private editingAreaId: string | null = null;
   private readonly renderer = L.canvas({ padding: 0.5, tolerance: 4 });
 
@@ -178,19 +182,39 @@ export class LeafletEngine extends Emitter<MapEngineEvents> implements IMapEngin
     };
   }
 
+  /** Updates remote sketches in place (no flicker, no lingering fade-out tooltips). */
   renderSketches(sketches: RenderableSketch[]): void {
-    this.sketchGroup.clearLayers();
+    const seen = new Set<string>();
     for (const s of sketches) {
       if (s.points.length === 0) continue;
+      seen.add(s.userId);
       const latlngs = s.points.map(toLatLng);
-      const style = { color: s.color, weight: 2, dashArray: '4 6', interactive: false, renderer: this.renderer };
-      const shape = latlngs.length >= 3 ? L.polygon(latlngs, { ...style, fillOpacity: 0.1 }) : L.polyline(latlngs, style);
-      shape.addTo(this.sketchGroup);
+      const closed = latlngs.length >= 3;
       const label = `${escapeHtml(s.displayName)} is drawing${s.areaSqKm > 0 ? ` · ${formatArea(s.areaSqKm)}` : ''}`;
-      L.tooltip({ permanent: true, direction: 'right', className: 'sketch-label', offset: [8, 0] })
-        .setLatLng(latlngs[latlngs.length - 1]!)
-        .setContent(label)
-        .addTo(this.sketchGroup);
+      let entry = this.sketchLayers.get(s.userId);
+      if (entry && entry.closed !== closed) {
+        entry.shape.remove();
+        entry.label.remove();
+        entry = undefined;
+      }
+      if (!entry) {
+        const style = { color: s.color, weight: 2, dashArray: '4 6', interactive: false, renderer: this.renderer };
+        const shape: SketchShape = closed ? L.polygon(latlngs, { ...style, fillOpacity: 0.1 }) : L.polyline(latlngs, style);
+        const tooltip = L.tooltip({ permanent: true, direction: 'right', className: 'sketch-label', offset: [8, 0] });
+        tooltip.setLatLng(latlngs[latlngs.length - 1]!).setContent(label);
+        shape.addTo(this.sketchGroup);
+        tooltip.addTo(this.sketchGroup);
+        this.sketchLayers.set(s.userId, { shape, label: tooltip, closed });
+      } else {
+        entry.shape.setLatLngs(latlngs);
+        entry.label.setLatLng(latlngs[latlngs.length - 1]!).setContent(label);
+      }
+    }
+    for (const [userId, entry] of this.sketchLayers) {
+      if (seen.has(userId)) continue;
+      entry.shape.remove();
+      entry.label.remove();
+      this.sketchLayers.delete(userId);
     }
   }
 
