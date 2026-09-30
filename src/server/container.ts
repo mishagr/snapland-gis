@@ -53,8 +53,8 @@ function buildServices(): Services {
   const onLimiterError = (err: unknown) => logger.warn({ err }, 'rate limiter unavailable; failing open');
   const limiters = {
     draw: new RedisSlidingWindowRateLimiter(redis, { name: 'draw', limit: env.DRAW_RATE_LIMIT_PER_MIN, windowMs: 60_000 }, onLimiterError),
-    login: new RedisSlidingWindowRateLimiter(redis, { name: 'login', limit: 10, windowMs: 15 * 60_000 }, onLimiterError),
-    register: new RedisSlidingWindowRateLimiter(redis, { name: 'register', limit: 5, windowMs: 60 * 60_000 }, onLimiterError),
+    login: new RedisSlidingWindowRateLimiter(redis, { name: 'login', limit: env.LOGIN_RATE_LIMIT, windowMs: 15 * 60_000 }, onLimiterError),
+    register: new RedisSlidingWindowRateLimiter(redis, { name: 'register', limit: env.REGISTER_RATE_LIMIT, windowMs: 60 * 60_000 }, onLimiterError),
   };
   const audit = new AuditLogger(prisma, logger);
   const areaRepo = new AreaRepository(prisma);

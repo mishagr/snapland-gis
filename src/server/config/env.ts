@@ -21,6 +21,10 @@ const schema = z.object({
   SESSION_TTL_SECONDS: z.coerce.number().int().positive().default(7 * 24 * 3600),
   COOKIE_SECURE: bool.optional(),
   DRAW_RATE_LIMIT_PER_MIN: z.coerce.number().int().positive().default(50),
+  /** Sign-in attempts per IP+email per 15 minutes. */
+  LOGIN_RATE_LIMIT: z.coerce.number().int().positive().default(10),
+  /** Registrations per IP per hour. */
+  REGISTER_RATE_LIMIT: z.coerce.number().int().positive().default(5),
   AREA_CACHE_TTL_SECONDS: z.coerce.number().int().nonnegative().default(60),
   MAX_AREAS_PER_QUERY: z.coerce.number().int().positive().default(2000),
   REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
