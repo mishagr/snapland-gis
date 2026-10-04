@@ -1,0 +1,80 @@
+# Full stack: PostGIS, Redis, a one-shot migration job and the app.
+#   docker compose up --build        → http://localhost:3000
+# Optional: GOVMAP_TOKEN=... (or GOVMAP_MODE=mock) in the shell or an .env file next to this file.
+
+x-app-env: &app-env
+  DATABASE_URL: postgresql://snapland:snapland@postgres:5432/snapland
+  REDIS_URL: redis://redis:6379
+  APP_ORIGIN: ${APP_ORIGIN:-http://localhost:3000}
+  ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
+  TRUST_PROXY: ${TRUST_PROXY:-false}
+  GOVMAP_TOKEN: ${GOVMAP_TOKEN:-}
+  GOVMAP_MODE: ${GOVMAP_MODE:-}
+  MAP_DEFAULT_ENGINE: ${MAP_DEFAULT_ENGINE:-leaflet}
+  GOVMAP_ORTHO_TILE_URL: ${GOVMAP_ORTHO_TILE_URL:-}
+  GOVMAP_ORTHO_ORIGIN: ${GOVMAP_ORTHO_ORIGIN:-}
+  GOVMAP_ORTHO_RESOLUTIONS: ${GOVMAP_ORTHO_RESOLUTIONS:-}
+  ENABLE_DEV_TILES: ${ENABLE_DEV_TILES:-false}
+  EXPOSE_DEBUG_HANDLE: ${EXPOSE_DEBUG_HANDLE:-false}
+  REGISTER_RATE_LIMIT: ${REGISTER_RATE_LIMIT:-5}
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+
+services:
+  postgres:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_USER: snapland
+      POSTGRES_PASSWORD: snapland
+      POSTGRES_DB: snapland
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U snapland -d snapland"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    # Append-only file keeps sessions across restarts; every key the app writes has a TTL.
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  migrate:
+    build: .
+    image: snapland-gis:latest
+    command: ["npx", "prisma", "migrate", "deploy"]
+    environment:
+      DATABASE_URL: postgresql://snapland:snapland@postgres:5432/snapland
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  app:
+    image: snapland-gis:latest
+    environment: *app-env
+    ports:
+      - "3000:3000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:

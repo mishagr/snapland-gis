@@ -34,3 +34,14 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# generated prisma client
+/src/generated
+
+# playwright
+/playwright-report/
+/test-results/
+/blob-report/
+
+# local redis snapshots
+dump.rdb
